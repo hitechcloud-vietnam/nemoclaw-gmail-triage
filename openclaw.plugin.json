@@ -1,0 +1,32 @@
+{
+  "id": "gmail-triage",
+  "name": "Gmail Triage",
+  "version": "0.1.0",
+  "description": "AI-powered Gmail inbox triage with human-in-the-loop approval. Agent reads and categorizes; you take action.",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "triageLabelPrefix": {
+        "type": "string",
+        "default": "AI-Triage",
+        "description": "Root label prefix for triage queues"
+      },
+      "maxLabelDepth": {
+        "type": "number",
+        "default": 3,
+        "description": "Max nesting depth for triage labels"
+      },
+      "enableSendScope": {
+        "type": "boolean",
+        "default": false,
+        "description": "Request gmail.send scope for draft reply sending in UI"
+      },
+      "proposalExpireDays": {
+        "type": "number",
+        "default": 7,
+        "description": "Days before unreviewed proposals auto-discard"
+      }
+    },
+    "additionalProperties": false
+  }
+}
