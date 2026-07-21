@@ -1,0 +1,36 @@
+{
+  "name": "@nemoclaw/gmail-triage",
+  "version": "0.1.0",
+  "description": "Read-only Gmail triage plugin for OpenClaw/NemoClaw with human-in-the-loop approval for all destructive actions",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "openclaw": {
+    "extensions": ["./dist/index.js"],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2"
+    }
+  },
+  "files": [
+    "dist/",
+    "openclaw.plugin.json",
+    "nemoclaw-policy.yaml",
+    "src/ui/"
+  ],
+  "keywords": ["openclaw", "nemoclaw", "gmail", "triage", "email"],
+  "license": "MIT",
+  "dependencies": {
+    "google-auth-library": "^10.5.0"
+  },
+  "devDependencies": {
+    "@sinclair/typebox": "^0.34.0",
+    "openclaw": ">=2026.3.0",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.0"
+  }
+}
