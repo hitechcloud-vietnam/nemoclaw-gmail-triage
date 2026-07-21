@@ -1,0 +1,25 @@
+preset:
+  name: gmail-triage
+  description: "Gmail API access for read-only email triage and organization"
+
+network_policies:
+  gmail_api:
+    name: gmail_api
+    endpoints:
+      - host: gmail.googleapis.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+      - host: oauth2.googleapis.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+      - host: accounts.google.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+    binaries:
+      - { path: /usr/local/bin/node }
