@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gmail Triage</title>
+<style>
+  :root {
+    --bg: #0f0f0f; --surface: #1a1a1a; --surface-2: #252525; --border: #333;
+    --text: #e0e0e0; --text-muted: #888; --accent: #6366f1; --accent-hover: #818cf8;
+    --danger: #ef4444; --success: #22c55e; --warn: #f59e0b;
+    --radius: 8px; --font: system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.5; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem; }
+  h1 { font-size: 1.5rem; font-weight: 600; }
+  .tabs { display: flex; gap: 0.5rem; }
+  .tab { background: var(--surface); border: 1px solid var(--border); padding: 0.5rem 1rem; border-radius: var(--radius); cursor: pointer; color: var(--text-muted); font-size: 0.875rem; }
+  .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .tab:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+  .panel { display: none; } .panel.active { display: block; }
+  .queue-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 1rem; overflow: hidden; }
+  .queue-header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: var(--surface-2); cursor: pointer; }
+  .queue-header h3 { font-size: 0.875rem; font-weight: 500; }
+  .queue-meta { font-size: 0.75rem; color: var(--text-muted); }
+  .pattern-group { border-top: 1px solid var(--border); padding: 0.75rem 1rem; }
+  .pattern-label { font-size: 0.8rem; font-weight: 500; color: var(--accent); margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+  .pattern-actions { display: flex; gap: 0.25rem; }
+  .msg-row { display: flex; gap: 0.75rem; padding: 0.35rem 0; font-size: 0.8rem; align-items: baseline; }
+  .msg-row input[type=checkbox] { accent-color: var(--accent); }
+  .msg-from { width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); flex-shrink: 0; }
+  .msg-subject { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .msg-date { width: 100px; text-align: right; color: var(--text-muted); flex-shrink: 0; font-size: 0.75rem; }
+  .btn { padding: 0.3rem 0.6rem; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 0.7rem; cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .btn-danger { border-color: var(--danger); color: var(--danger); }
+  .btn-danger:hover { background: var(--danger); color: white; }
+  .btn-success { border-color: var(--success); color: var(--success); }
+  .btn-success:hover { background: var(--success); color: white; }
+  .btn-warn { border-color: var(--warn); color: var(--warn); }
+  .btn-warn:hover { background: var(--warn); color: white; }
+  .bulk-bar { display: flex; gap: 0.5rem; align-items: center; padding: 0.75rem 1rem; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+  .proposal-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; margin-bottom: 0.75rem; }
+  .proposal-type { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: 0.5rem; }
+  .proposal-reason { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+  .proposal-detail { font-size: 0.8rem; background: var(--surface-2); padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 0.75rem; }
+  .proposal-detail code { font-size: 0.75rem; }
+  .audit-row { font-size: 0.8rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); display: flex; gap: 1rem; }
+  .audit-time { width: 160px; color: var(--text-muted); flex-shrink: 0; }
+  .audit-action { width: 120px; font-weight: 500; flex-shrink: 0; }
+  .empty { text-align: center; color: var(--text-muted); padding: 3rem 1rem; }
+  .loading { text-align: center; color: var(--text-muted); padding: 2rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Gmail Triage</h1>
+    <div class="tabs">
+      <button class="tab active" data-panel="queues">Queues</button>
+      <button class="tab" data-panel="proposals">Proposals</button>
+      <button class="tab" data-panel="audit">Audit Log</button>
+    </div>
+  </header>
+
+  <div id="queues" class="panel active"></div>
+  <div id="proposals" class="panel"></div>
+  <div id="audit" class="panel"></div>
+</div>
+
+<script>
+const API = '/gmail-triage/api';
+const selected = new Set();
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t2 => t2.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById(t.dataset.panel).classList.add('active');
+  });
+});
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  return res.json();
+}
+
+async function bulkAction(action) {
+  const ids = [...selected];
+  if (!ids.length) return;
+  await api(`/${action}`, { method: 'POST', body: { messageIds: ids } });
+  selected.clear();
+  loadQueues();
+}
+
+async function loadQueues() {
+  const el = document.getElementById('queues');
+  el.innerHTML = '<div class="loading">Loading queues...</div>';
+  try {
+    const data = await api('/queues');
+    if (!data.queues?.length) { el.innerHTML = '<div class="empty">No triage queues yet. Ask the agent to triage your inbox.</div>'; return; }
+    el.innerHTML = renderBulkBar() + data.queues.map(renderQueue).join('');
+    bindCheckboxes();
+  } catch (e) { el.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+function renderBulkBar() {
+  return `<div class="bulk-bar">
+    <span id="sel-count" style="font-size:0.8rem;color:var(--text-muted)">0 selected</span>
+    <button class="btn" onclick="bulkAction('archive')">Archive</button>
+    <button class="btn btn-danger" onclick="bulkAction('trash')">Trash</button>
+    <button class="btn" onclick="bulkAction('mark-read')">Mark Read</button>
+  </div>`;
+}
+
+function renderQueue(q) {
+  return `<div class="queue-card">
+    <div class="queue-header"><h3>${esc(q.label)}</h3><span class="queue-meta">${q.total} messages, ${q.unread} unread</span></div>
+    ${q.patterns.map(renderPattern).join('')}
+  </div>`;
+}
+
+function renderPattern(p) {
+  const allIds = p.messages.map(m => m.id);
+  return `<div class="pattern-group">
+    <div class="pattern-label">
+      <span>${esc(p.label)} (${p.count})</span>
+      <div class="pattern-actions">
+        <button class="btn" onclick="selectAll(${JSON.stringify(allIds).replace(/"/g, '&quot;')})">Select All</button>
+      </div>
+    </div>
+    ${p.messages.map(renderMsg).join('')}
+  </div>`;
+}
+
+function renderMsg(m) {
+  return `<div class="msg-row">
+    <input type="checkbox" data-id="${m.id}" ${selected.has(m.id) ? 'checked' : ''}>
+    <span class="msg-from" title="${esc(m.from)}">${esc(m.from)}</span>
+    <span class="msg-subject" title="${esc(m.subject)}">${esc(m.subject)}</span>
+    <span class="msg-date">${fmtDate(m.date)}</span>
+  </div>`;
+}
+
+function selectAll(ids) { ids.forEach(id => selected.add(id)); updateSel(); loadQueues(); }
+function bindCheckboxes() {
+  document.querySelectorAll('input[data-id]').forEach(cb => {
+    cb.addEventListener('change', () => { cb.checked ? selected.add(cb.dataset.id) : selected.delete(cb.dataset.id); updateSel(); });
+  });
+}
+function updateSel() { const el = document.getElementById('sel-count'); if (el) el.textContent = `${selected.size} selected`; }
+
+async function loadProposals() {
+  const el = document.getElementById('proposals');
+  el.innerHTML = '<div class="loading">Loading proposals...</div>';
+  try {
+    const data = await api('/proposals');
+    if (!data.proposals?.length) { el.innerHTML = '<div class="empty">No pending proposals.</div>'; return; }
+    el.innerHTML = data.proposals.map(renderProposal).join('');
+  } catch (e) { el.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+function renderProposal(p) {
+  const detail = p.type === 'filter'
+    ? `<div class="proposal-detail"><code>${esc(JSON.stringify(p.criteria, null, 2))}</code></div>`
+    : `<div class="proposal-detail"><strong>To:</strong> ${esc(p.to)}<br><strong>Subject:</strong> ${esc(p.subject)}<br><br>${esc(p.body)}</div>`;
+
+  const actions = p.type === 'filter'
+    ? `<button class="btn btn-success" onclick="approveFilter('${p.id}')">Approve Filter</button>`
+    : `<button class="btn btn-success" onclick="sendDraft('${p.id}')">Send</button>`;
+
+  return `<div class="proposal-card">
+    <div class="proposal-type">${p.type === 'filter' ? 'Filter Proposal' : 'Draft Reply'}</div>
+    <div class="proposal-reason">${esc(p.reasoning)}</div>
+    ${detail}
+    <div style="display:flex;gap:0.5rem">
+      ${actions}
+      <button class="btn btn-danger" onclick="rejectProposal('${p.id}')">Reject</button>
+    </div>
+  </div>`;
+}
+
+async function approveFilter(id) { await api('/approve-filter', { method:'POST', body:{ proposalId: id }}); loadProposals(); }
+async function sendDraft(id) { await api('/send-draft', { method:'POST', body:{ proposalId: id }}); loadProposals(); }
+async function rejectProposal(id) { await api('/reject-proposal', { method:'POST', body:{ proposalId: id }}); loadProposals(); }
+
+async function loadAudit() {
+  const el = document.getElementById('audit');
+  el.innerHTML = '<div class="loading">Loading audit log...</div>';
+  try {
+    const data = await api('/audit');
+    if (!data.audit?.length) { el.innerHTML = '<div class="empty">No actions taken yet.</div>'; return; }
+    el.innerHTML = data.audit.map(a =>
+      `<div class="audit-row"><span class="audit-time">${new Date(a.timestamp).toLocaleString()}</span><span class="audit-action">${esc(a.action)}</span><span>${esc(JSON.stringify(a.details))}</span></div>`
+    ).join('');
+  } catch (e) { el.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+function fmtDate(d) { try { return new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric' }); } catch { return d; } }
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    if (t.dataset.panel === 'queues') loadQueues();
+    if (t.dataset.panel === 'proposals') loadProposals();
+    if (t.dataset.panel === 'audit') loadAudit();
+  });
+});
+
+loadQueues();
+</script>
+</body>
+</html>
